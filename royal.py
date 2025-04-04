@@ -183,7 +183,7 @@ async def main():
             else:
                 # New login required
                 api_id = int(input(Fore.CYAN + f"Enter API ID for account {i}: "))
-                api_hash = input(Fore.CYAN + f"Enter API hash for account {i}: "))
+                api_hash = input(Fore.CYAN + f"Enter API hash for account {i}: ")
                 client = await create_and_save_client(session_name, api_id, api_hash)
                 print(Fore.GREEN + f"Logged in via phone for account {i}")
 
