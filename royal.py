@@ -172,7 +172,6 @@ async def main():
             credentials = load_credentials(session_name)
 
             if credentials:
-                # Existing session found
                 client = TelegramClient(
                     StringSession(credentials["string_session"]),
                     credentials["api_id"],
@@ -181,7 +180,6 @@ async def main():
                 await client.start()
                 print(Fore.GREEN + f"Logged in via session for account {i}")
             else:
-                # New login required
                 api_id = int(input(Fore.CYAN + f"Enter API ID for account {i}: "))
                 api_hash = input(Fore.CYAN + f"Enter API hash for account {i}: ")
                 client = await create_and_save_client(session_name, api_id, api_hash)
@@ -203,6 +201,10 @@ async def main():
         if option == 1:
             rounds = int(input(Fore.MAGENTA + "Enter number of forwarding rounds: "))
             delay = int(input(Fore.MAGENTA + "Enter delay between rounds (seconds): "))
+
+            # Start auto-reply handlers in background
+            reply_tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
+            background_tasks = [asyncio.create_task(task) for task in reply_tasks]
 
             for round_num in range(1, rounds + 1):
                 print(Fore.YELLOW + f"\nStarting round {round_num}")
