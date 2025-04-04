@@ -24,7 +24,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Updated Auto-Reply Message
+# Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
 HEY SIR/MAM WELCOME TO ROYAL PLACE 🙌
 
@@ -78,7 +78,7 @@ async def get_last_saved_message(client):
         return None
 
 async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
-    """Forward the last saved message to all groups with a random delay (15-30 seconds) between groups."""
+    """Forward the last saved message to all groups."""
     try:
         dialogs = await client.get_dialogs()
         group_dialogs = [dialog for dialog in dialogs if dialog.is_group]
@@ -108,7 +108,7 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
                 random_delay = random.randint(15, 30)
-                print(Fore.CYAN + f"Waiting for {random_delay} seconds before the next group...")
+                print(Fore.CYAN + f"Waiting for {random_delay} seconds before next group...")
                 await asyncio.sleep(random_delay)
 
             print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
@@ -135,12 +135,24 @@ async def setup_auto_reply(client, session_name):
                 print(Fore.RED + f"Failed to reply to {event.sender_id}: {str(e)}")
                 logging.error(f"Failed to reply to {event.sender_id}: {str(e)}")
 
-async def create_client(session_name, api_id, api_hash):
-    """Create and authenticate a new Telegram client."""
-    client = TelegramClient(f'sessions/{session_name}', api_id, api_hash)
-    await client.start(phone=lambda: input(Fore.CYAN + "Enter your phone number (with country code): "),
-                      password=lambda: input(Fore.CYAN + "Enter your 2FA password (if any): "),
-                      code_callback=lambda: input(Fore.CYAN + "Enter the OTP you received: "))
+async def create_and_save_client(session_name, api_id, api_hash):
+    """Create client and save session after login."""
+    client = TelegramClient(StringSession(), api_id, api_hash)
+    await client.start(
+        phone=lambda: input(Fore.CYAN + "Enter phone number (with country code): "),
+        code_callback=lambda: input(Fore.CYAN + "Enter OTP code: "),
+        password=lambda: input(Fore.CYAN + "Enter 2FA password (if any): ")
+    )
+    
+    # Save the session string
+    session_string = StringSession.save(client.session)
+    credentials = {
+        "api_id": api_id,
+        "api_hash": api_hash,
+        "string_session": session_string
+    }
+    save_credentials(session_name, credentials)
+    
     return client
 
 async def main():
@@ -148,9 +160,9 @@ async def main():
     display_banner()
 
     try:
-        num_accounts = int(input("Enter the number of accounts: "))
+        num_accounts = int(input("Enter number of accounts: "))
         if num_accounts <= 0:
-            print(Fore.RED + "Number of accounts must be greater than 0.")
+            print(Fore.RED + "Number of accounts must be > 0")
             return
 
         valid_clients = []
@@ -159,67 +171,56 @@ async def main():
             session_name = f"account{i}"
             credentials = load_credentials(session_name)
 
-            api_id = int(input(Fore.CYAN + f"Enter API ID for account {i}: "))
-            api_hash = input(Fore.CYAN + f"Enter API hash for account {i}: ")
+            if credentials:
+                # Existing session found
+                client = TelegramClient(
+                    StringSession(credentials["string_session"]),
+                    credentials["api_id"],
+                    credentials["api_hash"]
+                )
+                await client.start()
+                print(Fore.GREEN + f"Logged in via session for account {i}")
+            else:
+                # New login required
+                api_id = int(input(Fore.CYAN + f"Enter API ID for account {i}: "))
+                api_hash = input(Fore.CYAN + f"Enter API hash for account {i}: "))
+                client = await create_and_save_client(session_name, api_id, api_hash)
+                print(Fore.GREEN + f"Logged in via phone for account {i}")
 
-            try:
-                client = await create_client(session_name, api_id, api_hash)
-                string_session = StringSession.save(client.session)
-                
-                credentials = {
-                    "api_id": api_id,
-                    "api_hash": api_hash,
-                    "string_session": string_session,
-                }
-                save_credentials(session_name, credentials)
-                
-                print(Fore.GREEN + f"Logged in successfully for account {i}")
-                valid_clients.append((client, session_name))
-            except UserDeactivatedBanError:
-                print(Fore.RED + f"Account {i} is banned. Skipping...")
-                logging.warning(f"Account {i} is banned. Skipping...")
-                continue
-            except Exception as e:
-                print(Fore.RED + f"Failed to login for account {i}: {str(e)}")
-                logging.error(f"Failed to login for account {i}: {str(e)}")
-                continue
+            valid_clients.append((client, session_name))
 
         if not valid_clients:
-            print(Fore.RED + "No valid accounts available to proceed.")
+            print(Fore.RED + "No valid accounts available")
             return
 
-        print(Fore.MAGENTA + "\nChoose an option:")
-        print(Fore.YELLOW + "1. Auto Forwarding (Forward last saved message to all groups)")
-        print(Fore.YELLOW + "2. Auto Reply (Reply to private messages)")
+        print(Fore.MAGENTA + "\nChoose mode:")
+        print(Fore.YELLOW + "1. Auto Forwarding")
+        print(Fore.YELLOW + "2. Auto Reply")
 
-        option = int(input(Fore.CYAN + "Enter your choice: "))
-        rounds, delay_between_rounds = 0, 0
+        option = int(input(Fore.CYAN + "Enter choice: "))
+        rounds, delay = 0, 0
 
         if option == 1:
-            rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
-            delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
-
-            auto_reply_tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
-            await asyncio.gather(*auto_reply_tasks)
+            rounds = int(input(Fore.MAGENTA + "Enter number of forwarding rounds: "))
+            delay = int(input(Fore.MAGENTA + "Enter delay between rounds (seconds): "))
 
             for round_num in range(1, rounds + 1):
-                print(Fore.YELLOW + f"\nStarting round {round_num} for all accounts...")
+                print(Fore.YELLOW + f"\nStarting round {round_num}")
                 tasks = []
                 for client, session_name in valid_clients:
-                    last_message = await get_last_saved_message(client)
-                    if last_message:
-                        tasks.append(forward_messages_to_groups(client, last_message, session_name, 1, 0))
+                    last_msg = await get_last_saved_message(client)
+                    if last_msg:
+                        tasks.append(forward_messages_to_groups(client, last_msg, session_name, 1, 0))
                 await asyncio.gather(*tasks)
                 if round_num < rounds:
-                    print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
-                    await asyncio.sleep(delay_between_rounds)
+                    print(Fore.CYAN + f"Waiting {delay} seconds before next round...")
+                    await asyncio.sleep(delay)
 
         elif option == 2:
-            print(Fore.GREEN + "Starting Auto Reply...")
+            print(Fore.GREEN + "Starting Auto Reply mode...")
             tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
             await asyncio.gather(*tasks)
-
-            print(Fore.CYAN + "Auto-reply is running. Press Ctrl+C to stop.")
+            print(Fore.CYAN + "Auto-reply running. Press Ctrl+C to stop.")
             while True:
                 await asyncio.sleep(1)
 
@@ -227,10 +228,10 @@ async def main():
             await client.disconnect()
 
     except KeyboardInterrupt:
-        print(Fore.YELLOW + "\nScript terminated by user.")
+        print(Fore.YELLOW + "\nScript stopped by user")
     except Exception as e:
-        print(Fore.RED + f"An error occurred: {str(e)}")
-        logging.error(f"An error occurred: {str(e)}")
+        print(Fore.RED + f"Error: {str(e)}")
+        logging.error(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
