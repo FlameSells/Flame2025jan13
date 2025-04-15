@@ -40,7 +40,8 @@ AUTO_REPLY_MESSAGE = """
 * Service provide since 2019 ✅
 * Biggest & newest collection ✅ 
 * Safest payment gateway fòr privacy ✅
-* Each month 5 new updates inn all chanels ✅"""
+* Each month 5 new updates inn all chanels ✅
+"""
 
 def display_banner():
     """Display the banner using pyfiglet."""
