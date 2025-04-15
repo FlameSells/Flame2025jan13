@@ -26,21 +26,21 @@ logging.basicConfig(
 
 # Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-Welcome to MRX SHOPS 🥀
- 
-Contact @MR_XSHOP ⭐️
+⭐️   Please contact us In Official I’d  ⭐️
 
-Message 👉@MR_XSHOP⭐️ 
+👇 OUR OFFICAL ID 👇
 
-Backup @MRXshop2
-              @seller_2019
+         @MR_XSHOP 
+         @MR_XSHOP
 
-🚀*Need help or have questions?*
-We're here to assist you! Feel free to
-message us anytime.
 
- Best and trusted service since 2019 ✅
-"""
+🗿Why choose us ? 
+
+* All video Fròm dark Web ✅
+* Service provide since 2019 ✅
+* Biggest & newest collection ✅ 
+* Safest payment gateway fòr privacy ✅
+* Each month 5 new updates inn all chanels ✅"""
 
 def display_banner():
     """Display the banner using pyfiglet."""
