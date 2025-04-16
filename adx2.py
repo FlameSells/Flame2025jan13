@@ -5,7 +5,7 @@ import random
 import logging
 from telethon import TelegramClient, events, errors
 from telethon.sessions import StringSession
-from telethon.errors import UserDeactivatedBanError, FloodWaitError
+from telethon.errors import UserDeactivatedBanError, FloodWaitError, PhoneCodeInvalidError, SessionPasswordNeededError
 from telethon.tl.functions.messages import GetHistoryRequest
 from colorama import init, Fore
 import pyfiglet
@@ -60,6 +60,66 @@ def load_credentials(session_name):
         with open(path, "r") as f:
             return json.load(f)
     return {}
+
+async def login_to_session(session_num):
+    """Handle the login process for a session with retry mechanisms."""
+    session_name = f"session{session_num}"
+    credentials = load_credentials(session_name)
+    
+    # Get credentials if not saved
+    if not credentials:
+        print(Fore.YELLOW + f"\nEnter details for account {session_num}:")
+        credentials = {
+            "api_id": input(Fore.CYAN + f"Enter API ID for session {session_num}: "),
+            "api_hash": input(Fore.CYAN + f"Enter API hash for session {session_num}: "),
+            "phone_number": input(Fore.CYAN + f"Enter phone number for session {session_num} (with country code): ")
+        }
+    
+    client = TelegramClient(
+        os.path.join(CREDENTIALS_FOLDER, session_name),
+        int(credentials["api_id"]),
+        credentials["api_hash"]
+    )
+    
+    await client.connect()
+    
+    if not await client.is_user_authorized():
+        print(Fore.YELLOW + f"\nLogging in to session {session_num}...")
+        max_attempts = 3
+        attempts = 0
+        
+        while attempts < max_attempts:
+            try:
+                await client.send_code_request(credentials["phone_number"])
+                code = input(Fore.CYAN + "Enter the OTP code you received: ")
+                
+                try:
+                    await client.sign_in(
+                        phone=credentials["phone_number"],
+                        code=code
+                    )
+                    break
+                except SessionPasswordNeededError:
+                    password = input(Fore.CYAN + "Enter your 2FA password: ")
+                    await client.sign_in(password=password)
+                    break
+                    
+            except PhoneCodeInvalidError:
+                attempts += 1
+                if attempts < max_attempts:
+                    print(Fore.RED + f"Invalid code. {max_attempts - attempts} attempts remaining.")
+                else:
+                    print(Fore.RED + "Maximum attempts reached. Skipping this session.")
+                    return None
+            
+            except Exception as e:
+                print(Fore.RED + f"Error during login: {str(e)}")
+                return None
+        
+        # Save credentials after successful login
+        save_credentials(session_name, credentials)
+    
+    return client
 
 async def get_last_saved_message(client):
     """Retrieve the last message from 'Saved Messages'."""
@@ -133,16 +193,10 @@ async def setup_auto_reply(client, session_name):
                 print(Fore.RED + f"[{session_name}] Failed to reply: {str(e)}")
                 logging.error(f"[{session_name}] Failed to reply: {str(e)}")
 
-async def run_session(session_name, credentials):
+async def run_session(session_num, client):
     """Run both forwarding and auto-reply for a session."""
-    client = TelegramClient(
-        StringSession(credentials["string_session"]),
-        credentials["api_id"],
-        credentials["api_hash"]
-    )
-    
+    session_name = f"session{session_num}"
     try:
-        await client.start()
         print(Fore.GREEN + f"[{session_name}] Successfully logged in")
         
         # Start auto-reply
@@ -166,90 +220,27 @@ async def run_session(session_name, credentials):
     finally:
         await client.disconnect()
 
-async def login_with_phone(session_name):
-    """Handle phone login with OTP and 2FA."""
-    while True:
-        try:
-            print(Fore.CYAN + f"\nLogin for {session_name}:")
-            phone = input("Phone number (with country code): ").strip()
-            api_id = int(input("API ID: ").strip())
-            api_hash = input("API Hash: ").strip()
-            
-            client = TelegramClient(f"sessions/{session_name}", api_id, api_hash)
-            await client.connect()
-            
-            # Send code request
-            await client.send_code_request(phone)
-            print(Fore.GREEN + "Verification code sent")
-            
-            # Handle code input
-            while True:
-                code = input('Enter the code (or "r" to resend): ').strip()
-                if code.lower() == 'r':
-                    await client.send_code_request(phone)
-                    print(Fore.GREEN + "New code sent")
-                    continue
-                
-                try:
-                    await client.sign_in(phone, code)
-                    break
-                except errors.PhoneCodeInvalidError:
-                    print(Fore.RED + "Wrong code! Try again")
-                except errors.PhoneCodeExpiredError:
-                    print(Fore.RED + "Code expired. Sending new code...")
-                    await client.send_code_request(phone)
-                    print(Fore.GREEN + "New code sent")
-                except errors.SessionPasswordNeededError:
-                    print(Fore.YELLOW + "2FA password required")
-                    while True:
-                        password = input("Enter your 2FA password: ")
-                        try:
-                            await client.sign_in(password=password)
-                            break
-                        except errors.PasswordHashInvalidError:
-                            print(Fore.RED + "Wrong password! Try again")
-            
-            # Verify login success
-            if await client.is_user_authorized():
-                me = await client.get_me()
-                print(Fore.GREEN + f"Successfully logged in as {me.first_name}")
-                string_session = client.session.save()
-                await client.disconnect()
-                return {
-                    "api_id": api_id,
-                    "api_hash": api_hash,
-                    "string_session": string_session
-                }
-            
-        except Exception as e:
-            print(Fore.RED + f"Login error: {str(e)}")
-            if 'client' in locals():
-                await client.disconnect()
-            print(Fore.YELLOW + "Let's try again...")
-
 async def main():
     """Main function to handle user input and execute the script."""
     display_banner()
 
     try:
-        num_sessions = int(input("Enter number of sessions: "))
-        if num_sessions <= 0:
-            print(Fore.RED + "Number must be greater than 0")
-            return
+        num_sessions = int(input(Fore.MAGENTA + "How many sessions would you like to log in? "))
+        clients = []
 
-        tasks = []
-        
         for i in range(1, num_sessions + 1):
-            session_name = f"session{i}"
-            credentials = load_credentials(session_name)
+            print(Fore.YELLOW + f"\n=== Processing Session {i}/{num_sessions} ===")
+            client = await login_to_session(i)
+            if client:
+                clients.append((i, client))
+                print(Fore.GREEN + f"Successfully logged in to session {i}")
+            else:
+                print(Fore.RED + f"Failed to log in to session {i}")
 
-            if not credentials:
-                credentials = await login_with_phone(session_name)
-                save_credentials(session_name, credentials)
-
-            tasks.append(run_session(session_name, credentials))
-
-        print(Fore.GREEN + "\nStarting all sessions (Auto-Reply + Forwarding)...")
+        print(Fore.GREEN + f"\nSuccessfully logged in to {len(clients)}/{num_sessions} sessions")
+        
+        # Run all sessions
+        tasks = [run_session(session_num, client) for session_num, client in clients]
         await asyncio.gather(*tasks)
 
     except KeyboardInterrupt:
