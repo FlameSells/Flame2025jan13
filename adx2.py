@@ -8,7 +8,7 @@ from telethon.sessions import StringSession
 from telethon.errors import UserDeactivatedBanError, FloodWaitError
 from telethon.tl.functions.messages import GetHistoryRequest
 from colorama import init, Fore
-import pyfiglet
+import pyfigle
 
 # Initialize colorama for colored output
 init(autoreset=True)
