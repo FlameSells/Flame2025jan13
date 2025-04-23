@@ -28,7 +28,7 @@ logging.basicConfig(
 AUTO_REPLY_MESSAGE = """
 ⭐️   Please contact us In Official I’d  ⭐️
 
-👇 OUR OFFICAL ID 👇
+👇 OUR OFFICAL ID 
 
          @MR_XSHOP 
          @MR_XSHOP
