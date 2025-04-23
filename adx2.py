@@ -26,21 +26,23 @@ logging.basicConfig(
 
 # Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-⭐️   Please contact us In Official I’d  ⭐️
+📌 This is only working I’d 
+📌 Please contact us In Official I’d  
 
-👇 OUR OFFICAL ID 
+👇 OUR OFFICAL ID 👇
 
-         @MR_XSHOP 
-         @MR_XSHOP
+         @MR_XSHOP  
+         @MR_XSHOP    ( 👈𝐌𝐞𝐬𝐬𝐚𝐠𝐞 𝐡𝐞𝐫𝐞 )
 
+_______________________________________________
 
-🗿Why choose us ? 
+📌 ये I’d सिर्फ विज्ञापन चलाने के लिए है |
+📌 आपको कुछ चाहिए तो हमें नीचे दिए गए आईडी पर मैसेज करेl
 
-* All video Fròm dark Web ✅
-* Service provide since 2019 ✅
-* Biggest & newest collection ✅ 
-* Safest payment gateway fòr privacy ✅
-* Each month 5 new updates inn all chanels ✅
+     (👇 यहा मैसेज करे 👇) 
+
+          @MR_XSHOP 
+          @MR_XSHOP
 """
 
 def display_banner():
