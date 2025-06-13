@@ -11,7 +11,8 @@ from telethon.errors import (
     ChannelPrivateError,
     ChatWriteForbiddenError,
     ChannelInvalidError,
-    PeerIdInvalidError
+    PeerIdInvalidError,
+    SessionPasswordNeededError
 )
 from colorama import init, Fore
 import pyfiglet
@@ -57,6 +58,58 @@ def load_credentials(session_name):
         with open(path, "r") as f:
             return json.load(f)
     return None
+
+async def generate_session():
+    """Generate a new Telegram session with minimal input"""
+    print(Fore.CYAN + "\nSession Generator")
+    
+    # Get essential information
+    phone_number = input(Fore.YELLOW + "Enter your phone number (with country code): ")
+    api_id = input(Fore.YELLOW + "Enter your API ID: ")
+    api_hash = input(Fore.YELLOW + "Enter your API Hash: ")
+    
+    # Generate random session name
+    session_name = f"session_{random.randint(1000, 9999)}"
+    while os.path.exists(os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")):
+        session_name = f"session_{random.randint(1000, 9999)}"
+    
+    client = TelegramClient(StringSession(), api_id, api_hash)
+    await client.connect()
+    
+    try:
+        if not await client.is_user_authorized():
+            print(Fore.CYAN + "\nSending code...")
+            await client.send_code_request(phone_number)
+            
+            code = input(Fore.YELLOW + "Enter the code you received: ")
+            
+            try:
+                await client.sign_in(phone_number, code)
+                print(Fore.GREEN + "Signed in successfully!")
+            except SessionPasswordNeededError:
+                password = input(Fore.YELLOW + "Enter your 2FA password: ")
+                await client.sign_in(password=password)
+                print(Fore.GREEN + "Signed in with 2FA!")
+            
+        session_string = client.session.save()
+        
+        credentials = {
+            "api_id": int(api_id),
+            "api_hash": api_hash,
+            "string_session": session_string,
+            "phone_number": phone_number
+        }
+        
+        save_credentials(session_name, credentials)
+        
+        print(Fore.GREEN + "\nSession created successfully!")
+        print(Fore.CYAN + f"Session name: {session_name}")
+        print(Fore.CYAN + f"Session string: {session_string}")
+        
+    except Exception as e:
+        print(Fore.RED + f"Error during session creation: {str(e)}")
+    finally:
+        await client.disconnect()
 
 async def get_last_dm_message(client, session_name):
     """Get last message from target user's DM"""
@@ -284,9 +337,10 @@ async def main_menu():
         print(Fore.CYAN + "1. Start DM Forwarding + Auto Reply")
         print(Fore.CYAN + "2. Bio Changer")
         print(Fore.CYAN + "3. Name Changer")
-        print(Fore.CYAN + "4. Exit")
+        print(Fore.CYAN + "4. Generate New Session")
+        print(Fore.CYAN + "5. Exit")
         
-        choice = input(Fore.YELLOW + "\nSelect option (1-4): ")
+        choice = input(Fore.YELLOW + "\nSelect option (1-5): ")
         
         if choice == "1":
             await main_forwarding()
@@ -295,6 +349,8 @@ async def main_menu():
         elif choice == "3":
             await name_changer_menu()
         elif choice == "4":
+            await generate_session()
+        elif choice == "5":
             print(Fore.YELLOW + "Exiting...")
             return
         else:
@@ -303,27 +359,42 @@ async def main_menu():
 async def main_forwarding():
     """Main forwarding function"""
     try:
-        num_sessions = int(input("Enter number of sessions: "))
-        if num_sessions <= 0:
-            raise ValueError("Positive number required")
-                
-        sessions = []
-        for i in range(1, num_sessions + 1):
-            session_name = f"session{i}"
-            creds = load_credentials(session_name)
+        sessions = await list_sessions()
+        if not sessions:
+            print(Fore.RED + "No sessions found! Create one first.")
+            return
             
-            if not creds:
-                print(Fore.CYAN + f"\nEnter details for {session_name}:")
-                creds = {
-                    "api_id": int(input("API ID: ")),
-                    "api_hash": input("API Hash: "),
-                    "string_session": input("String Session: ")
-                }
-                save_credentials(session_name, creds)
+        print(Fore.CYAN + "\nAvailable sessions:")
+        for i, session in enumerate(sessions, 1):
+            print(Fore.CYAN + f"{i}. {session}")
+            
+        selected = input(Fore.YELLOW + "\nEnter session numbers to use (comma separated, or 'all'): ")
+        
+        if selected.lower() == 'all':
+            session_names = sessions
+        else:
+            try:
+                selected_indices = [int(x.strip()) for x in selected.split(',')]
+                session_names = [sessions[i-1] for i in selected_indices if 1 <= i <= len(sessions)]
+            except ValueError:
+                print(Fore.RED + "Invalid selection!")
+                return
                 
-            sessions.append((session_name, creds))
+        if not session_names:
+            print(Fore.RED + "No valid sessions selected!")
+            return
+            
+        sessions_to_run = []
+        for session_name in session_names:
+            creds = load_credentials(session_name)
+            if creds:
+                sessions_to_run.append((session_name, creds))
+                
+        if not sessions_to_run:
+            print(Fore.RED + "No valid sessions to run!")
+            return
 
-        print(Fore.GREEN + f"\nStarting {len(sessions)} sessions (10 concurrent)")
+        print(Fore.GREEN + f"\nStarting {len(sessions_to_run)} sessions (10 concurrent)")
         
         semaphore = asyncio.Semaphore(MAX_CONCURRENT)
         
@@ -331,7 +402,7 @@ async def main_forwarding():
             async with semaphore:
                 await run_session(session_name, creds)
         
-        await asyncio.gather(*[start_session(name, creds) for name, creds in sessions])
+        await asyncio.gather(*[start_session(name, creds) for name, creds in sessions_to_run])
         
     except ValueError as e:
         print(Fore.RED + f"Input error: {str(e)}")
